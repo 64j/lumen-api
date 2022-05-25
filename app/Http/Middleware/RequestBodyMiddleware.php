@@ -38,20 +38,23 @@ class RequestBodyMiddleware
             ], 400);
         }
 
-        $route = app()->router->getRoutes()[$request->getMethod() . $request->getPathInfo()] ?? null;
+        $route = $request->route()[1] ?? null;
 
         if ($route) {
-            [$class, $method] = Str::parseCallback($route['action']['uses']);
+            [$class, $method] = Str::parseCallback($route['uses']);
 
             $reader = new AnnotationReader();
             $annotations = $reader->getMethodAnnotations(new ReflectionMethod($class, $method));
-            $annotations = array_values(array_filter($annotations, function ($a) use ($request) {
-                return $a instanceof AbstractAnnotation && $request->isMethod((string) $a->method);
-            }));
 
-            if (!empty($annotations[0])) {
-                /** @var AbstractAnnotation $openapi */
-                $openapi = $annotations[0];
+            /** @var AbstractAnnotation $openapi */
+            $openapi = array_values(array_filter($annotations, function ($a) use ($request) {
+                    return $a instanceof AbstractAnnotation && $request->isMethod((string) $a->method);
+                }))[0] ?? null;
+
+            if ($openapi) {
+                if ($openapi->path == Generator::UNDEFINED) {
+                    $openapi->path = $request->getPathInfo();
+                }
 
                 if ($openapi->requestBody != Generator::UNDEFINED) {
                     $mediaType = $request->header('content-type');
