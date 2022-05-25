@@ -8,6 +8,7 @@ use Closure;
 use Doctrine\Common\Annotations\AnnotationReader;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use JsonSchema\Exception\InvalidSchemaException;
 use JsonSchema\Validator;
 use OpenApi\Annotations\AbstractAnnotation;
 use OpenApi\Generator;
@@ -52,25 +53,21 @@ class RequestBodyMiddleware
                 }
 
                 if ($openapi->requestBody != Generator::UNDEFINED) {
+                    $mediaType = $request->header('content-type');
                     $jsonSchema = json_decode($openapi->requestBody->toJson(), true);
                     $jsonSchema = $this->getRef($jsonSchema);
+                    $jsonSchema = $jsonSchema['content'][$mediaType]['schema'] ?? null;
 
-                    dd($jsonSchema);
-//                    $mediaType = $request->header('content-type');
-//                    $content = array_filter($openapi->requestBody->content, function ($a) use ($mediaType) {
-//                            return $a->mediaType == $mediaType;
-//                        })[0] ?? null;
-//
-//                    if ([] === $parsedBody) {
-//                        $payload = new \stdClass();
-//                    } else {
-//                        $payload = json_encode($parsedBody);
-//                        $payload = (object) json_decode($payload);
-//                    }
-//
-//                    $jsonSchema = json_decode($content->schema->toJson(), true);
-//                    $jsonSchema = $this->getRef($jsonSchema);
-//                    dd($jsonSchema);
+                    if (!$jsonSchema) {
+                        throw new InvalidSchemaException();
+                    }
+
+                    if ([] === $parsedBody) {
+                        $payload = new \stdClass();
+                    } else {
+                        $payload = json_encode($parsedBody);
+                        $payload = (object) json_decode($payload);
+                    }
 
                     $validator = new Validator();
                     $validator->validate($payload, $jsonSchema);
