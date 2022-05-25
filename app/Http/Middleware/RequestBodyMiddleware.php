@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use JsonSchema\Validator;
 use OpenApi\Annotations\AbstractAnnotation;
+use OpenApi\Generator;
 use ReflectionMethod;
 
 class RequestBodyMiddleware
@@ -51,34 +52,37 @@ class RequestBodyMiddleware
             if (!empty($annotations[0])) {
                 /** @var AbstractAnnotation $openapi */
                 $openapi = $annotations[0];
-                $mediaType = $request->header('content-type');
-                $content = array_filter($openapi->requestBody->content, function ($a) use ($mediaType) {
-                        return $a->mediaType == $mediaType;
-                    })[0] ?? null;
 
-                if ([] === $parsedBody) {
-                    $payload = new \stdClass();
-                } else {
-                    $payload = json_encode($parsedBody);
-                    $payload = (object) json_decode($payload);
-                }
+                if ($openapi->requestBody != Generator::UNDEFINED) {
+                    $mediaType = $request->header('content-type');
+                    $content = array_filter($openapi->requestBody->content, function ($a) use ($mediaType) {
+                            return $a->mediaType == $mediaType;
+                        })[0] ?? null;
 
-                $content = json_decode($content->schema->toJson(), true);
+                    if ([] === $parsedBody) {
+                        $payload = new \stdClass();
+                    } else {
+                        $payload = json_encode($parsedBody);
+                        $payload = (object) json_decode($payload);
+                    }
 
-                $validator = new Validator();
-                $validator->validate($payload, $content);
+                    $content = json_decode($content->schema->toJson(), true);
 
-                if (!$validator->isValid()) {
-                    return response()->json([
-                        'errors' => array_map(function ($error) {
-                            return [
-                                'property' => $error['property'],
-                                'message' => $error['message'],
-                                'constraint' => $error['constraint'],
-                            ];
-                        }, $validator->getErrors()),
-                        'payload' => $payload,
-                    ], 400);
+                    $validator = new Validator();
+                    $validator->validate($payload, $content);
+
+                    if (!$validator->isValid()) {
+                        return response()->json([
+                            'errors' => array_map(function ($error) {
+                                return [
+                                    'property' => $error['property'],
+                                    'message' => $error['message'],
+                                    'constraint' => $error['constraint'],
+                                ];
+                            }, $validator->getErrors()),
+                            'payload' => $payload,
+                        ], 400);
+                    }
                 }
             }
         }
