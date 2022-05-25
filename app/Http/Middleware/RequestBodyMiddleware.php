@@ -44,12 +44,7 @@ class RequestBodyMiddleware
             [$class, $method] = Str::parseCallback($route['uses']);
 
             $reader = new AnnotationReader();
-            $annotations = $reader->getMethodAnnotations(new ReflectionMethod($class, $method));
-
-            /** @var AbstractAnnotation $openapi */
-            $openapi = array_values(array_filter($annotations, function ($a) use ($request) {
-                    return $a instanceof AbstractAnnotation && $request->isMethod((string) $a->method);
-                }))[0] ?? null;
+            $openapi = $reader->getMethodAnnotation(new ReflectionMethod($class, $method), AbstractAnnotation::class);
 
             if ($openapi) {
                 if ($openapi->path == Generator::UNDEFINED) {
@@ -57,22 +52,28 @@ class RequestBodyMiddleware
                 }
 
                 if ($openapi->requestBody != Generator::UNDEFINED) {
-                    $mediaType = $request->header('content-type');
-                    $content = array_filter($openapi->requestBody->content, function ($a) use ($mediaType) {
-                            return $a->mediaType == $mediaType;
-                        })[0] ?? null;
+                    $jsonSchema = json_decode($openapi->requestBody->toJson(), true);
+                    $jsonSchema = $this->getRef($jsonSchema);
 
-                    if ([] === $parsedBody) {
-                        $payload = new \stdClass();
-                    } else {
-                        $payload = json_encode($parsedBody);
-                        $payload = (object) json_decode($payload);
-                    }
-
-                    $content = json_decode($content->schema->toJson(), true);
+                    dd($jsonSchema);
+//                    $mediaType = $request->header('content-type');
+//                    $content = array_filter($openapi->requestBody->content, function ($a) use ($mediaType) {
+//                            return $a->mediaType == $mediaType;
+//                        })[0] ?? null;
+//
+//                    if ([] === $parsedBody) {
+//                        $payload = new \stdClass();
+//                    } else {
+//                        $payload = json_encode($parsedBody);
+//                        $payload = (object) json_decode($payload);
+//                    }
+//
+//                    $jsonSchema = json_decode($content->schema->toJson(), true);
+//                    $jsonSchema = $this->getRef($jsonSchema);
+//                    dd($jsonSchema);
 
                     $validator = new Validator();
-                    $validator->validate($payload, $content);
+                    $validator->validate($payload, $jsonSchema);
 
                     if (!$validator->isValid()) {
                         return response()->json([
