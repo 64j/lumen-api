@@ -22,7 +22,6 @@ class HomeController extends Controller
      *     path="/home",
      *     summary="Adds a new user - with oneOf examples",
      *     description="Adds a new user",
-     *     operationId="addUser",
      *     @OA\RequestBody(
      *         @OA\MediaType(
      *             mediaType="application/json",
@@ -60,5 +59,30 @@ class HomeController extends Controller
     public function index()
     {
         return 'ok';
+    }
+
+    /**
+     * @Get(
+     *     "/home2",
+     *     as="home2",
+     * )
+     * @Post(
+     *     "/home2",
+     *     as="home2",
+     *     middleware={"App\Http\Middleware\RequestBodyMiddleware"}
+     * )
+     * @OA\Post(
+     *     path="/home2",
+     *     @OA\RequestBody(ref="/provided-schema/example.json"),
+     *     @OA\Response(
+     *       response=200,
+     *       description="OK",
+     *     )
+     * )
+     * @return string
+     */
+    public function index2()
+    {
+        return 'index 2';
     }
 }
