@@ -13,6 +13,7 @@ use JsonSchema\Validator;
 use OpenApi\Annotations\AbstractAnnotation;
 use OpenApi\Generator;
 use ReflectionMethod;
+use stdClass;
 
 class RequestBodyMiddleware
 {
@@ -45,6 +46,10 @@ class RequestBodyMiddleware
             [$class, $method] = Str::parseCallback($route['uses']);
 
             $reader = new AnnotationReader();
+
+            /**
+             * @var \OpenApi\Annotations\Operation $openapi
+             */
             $openapi = $reader->getMethodAnnotation(new ReflectionMethod($class, $method), AbstractAnnotation::class);
 
             if ($openapi) {
@@ -63,7 +68,7 @@ class RequestBodyMiddleware
                     }
 
                     if ([] === $parsedBody) {
-                        $payload = new \stdClass();
+                        $payload = new stdClass();
                     } else {
                         $payload = json_encode($parsedBody);
                         $payload = (object) json_decode($payload);
@@ -81,7 +86,6 @@ class RequestBodyMiddleware
                                     'constraint' => $error['constraint'],
                                 ];
                             }, $validator->getErrors()),
-                            'payload' => $payload,
                         ], 400);
                     }
                 }
