@@ -16,7 +16,7 @@ class HomeController extends Controller
      * )
      * @Post(
      *     "/home",
-     *     middleware={"App\Http\Middleware\RequestBodyMiddleware"}
+     *     middleware={"App\Http\Middleware\OpenApiMiddleware"}
      * )
      * @OA\Post(
      *     path="/home",
@@ -37,10 +37,7 @@ class HomeController extends Controller
      *                 ),
      *                 @OA\Property(
      *                     property="phone",
-     *                     oneOf={
-     *                     	   @OA\Schema(type="string"),
-     *                     	   @OA\Schema(type="integer"),
-     *                     }
+     *                     type="integer"
      *                 ),
      *                 example={"id": "a3fb6", "name": "Jessica Smith", "phone": 12345678}
      *             )
@@ -69,20 +66,45 @@ class HomeController extends Controller
      * @Post(
      *     "/home2",
      *     as="home2",
-     *     middleware={"App\Http\Middleware\RequestBodyMiddleware"}
+     *     middleware={"App\Http\Middleware\OpenApiMiddleware"}
      * )
      * @OA\Post(
      *     path="/home2",
      *     @OA\RequestBody(ref="/provided-schema/example.json"),
      *     @OA\Response(
-     *       response=200,
-     *       description="OK",
+     *         response=200,
+     *         description="successful operation",
+     *         @OA\JsonContent(
+     *             required={"id", "name", "phone"},
+     *             properties={
+     *                 @OA\Property(
+     *                     property="id",
+     *                     type="integer"
+     *                 ),
+     *                 @OA\Property(
+     *                     property="name",
+     *                     type="string"
+     *                 ),
+     *                 @OA\Property(
+     *                     property="phone",
+     *                     type="integer"
+     *                 ),
+     *             }
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=401,
+     *         description="oops"
      *     )
      * )
-     * @return string
+     * @return array
      */
-    public function index2()
+    public function index2(): array
     {
-        return 'index 2';
+        return [
+            'id' => 123,
+            'name' => 'Name',
+            'phone' => 456,
+        ];
     }
 }
