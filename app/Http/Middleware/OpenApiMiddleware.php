@@ -13,7 +13,6 @@ use OpenApi\Analysers\DocBlockParser;
 use OpenApi\Analysis;
 use OpenApi\Annotations\AbstractAnnotation;
 use OpenApi\Annotations\Operation;
-use OpenApi\Annotations\Response;
 use OpenApi\Context;
 use OpenApi\Generator;
 use ReflectionMethod;
@@ -37,7 +36,11 @@ class OpenApiMiddleware
         $openapi = $this->getOpenApi($request);
 
         if ($openapi) {
-            $schema = $this->getSchema($openapi->requestBody, $request->header('content-type'));
+            $mediaType = $request->header('content-type');
+            /** @var \OpenApi\Annotations\RequestBody $jsonSchema */
+            $jsonSchema = $openapi->requestBody ?? null;
+
+            $schema = $this->getSchema($jsonSchema, $mediaType);
             if (!$this->validate($request->getContent(), $schema, 'Not valid request')) {
                 return null;
             }
@@ -48,12 +51,12 @@ class OpenApiMiddleware
 
         if ($openapi) {
             $mediaType = $response->headers->get('content-type');
-            /** @var Response $jsonSchema */
-            $jsonSchema = array_values(array_filter($openapi->responses, function (Response $r) use ($response, $mediaType) {
+            /** @var \OpenApi\Annotations\Response $jsonSchema */
+            $jsonSchema = array_values(array_filter($openapi->responses, function ($r) use ($response, $mediaType) {
                     return $r->response == $response->getStatusCode() && isset($r->content[$mediaType]);
                 }))[0] ?? null;
 
-            $schema = $this->getSchema($jsonSchema, $response->headers->get('content-type'));
+            $schema = $this->getSchema($jsonSchema, $mediaType);
             if (!$this->validate($response->getContent(), $schema, 'Not valid response')) {
                 return null;
             }
