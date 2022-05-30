@@ -11,12 +11,12 @@ use JsonSchema\Exception\InvalidSchemaException;
 use JsonSchema\Validator;
 use OpenApi\Analysers\DocBlockParser;
 use OpenApi\Analysis;
+use OpenApi\Annotations\AbstractAnnotation;
 use OpenApi\Annotations\Operation;
 use OpenApi\Annotations\Response;
 use OpenApi\Context;
 use OpenApi\Generator;
 use ReflectionMethod;
-use stdClass;
 
 class OpenApiMiddleware
 {
@@ -34,42 +34,28 @@ class OpenApiMiddleware
             return $next($request);
         }
 
-        $parsedBody = $request->json()
-            ->all();
-
-        if (!$parsedBody) {
-            return response()->json([
-                'error' => 'Request body can\'t be empty'
-            ], 400);
-        }
-
         $openapi = $this->getOpenApi($request);
 
-        if ($openapi && $openapi->requestBody != Generator::UNDEFINED) {
-            $mediaType = $request->header('content-type');
-            $jsonSchema = json_decode($openapi->requestBody->toJson(), true);
-            $jsonSchema = $this->getRef($jsonSchema);
-            $jsonSchema = $jsonSchema['content'][$mediaType]['schema'] ?? null;
-
-            $this->validate($parsedBody, $jsonSchema);
+        if ($openapi) {
+            $schema = $this->getSchema($openapi->requestBody, $request->header('content-type'));
+            if (!$this->validate($request->getContent(), $schema, 'Not valid request')) {
+                return null;
+            }
         }
 
         /** @var \Illuminate\Http\Response $response */
         $response = $next($request);
 
-        if ($openapi && $openapi->responses != Generator::UNDEFINED) {
+        if ($openapi) {
             $mediaType = $response->headers->get('content-type');
-
             /** @var Response $jsonSchema */
             $jsonSchema = array_values(array_filter($openapi->responses, function (Response $r) use ($response, $mediaType) {
                     return $r->response == $response->getStatusCode() && isset($r->content[$mediaType]);
                 }))[0] ?? null;
 
-            if ($jsonSchema) {
-                $jsonSchema = json_decode($jsonSchema->toJson(), true);
-                $jsonSchema = $jsonSchema['content'][$mediaType]['schema'] ?? null;
-
-                $this->validate($response->getOriginalContent(), $jsonSchema);
+            $schema = $this->getSchema($jsonSchema, $response->headers->get('content-type'));
+            if (!$this->validate($response->getContent(), $schema, 'Not valid response')) {
+                return null;
             }
         }
 
@@ -104,40 +90,82 @@ class OpenApiMiddleware
     }
 
     /**
+     * @param string $content
+     * @param string $type
+     * @return array|object|\stdClass|string
+     */
+    protected function getContent(string $content, string $type)
+    {
+        switch ($type) {
+            case 'array':
+                if ('' === $content) {
+                    $content = [];
+                } else {
+                    $content = (array) json_decode($content);
+                }
+                break;
+
+            case 'object':
+                if ('' === $content) {
+                    $content = new \stdClass();
+                } else {
+                    $content = (object) json_decode($content);
+                }
+                break;
+
+            case 'string':
+                break;
+        }
+
+        return $content;
+    }
+
+    /**
+     * @param \OpenApi\Annotations\AbstractAnnotation $schema
+     * @param string $type
+     * @return array
+     */
+    protected function getSchema(AbstractAnnotation $schema, string $type): array
+    {
+        $json = $schema->toJson();
+        $data = $json ? $this->getRef(json_decode($json, true)) : [];
+
+        return $data['content'][$type]['schema'] ?? [];
+    }
+
+    /**
      * @param $payload
      * @param $jsonSchema
-     * @return bool|\Illuminate\Http\JsonResponse
+     * @param string $message
+     * @return bool
      */
-    protected function validate($payload, $jsonSchema)
+    protected function validate($payload, $jsonSchema, string $message = ''): bool
     {
         if (!$jsonSchema) {
             throw new InvalidSchemaException();
         }
 
-        if ([] === $payload) {
-            $payload = new stdClass();
-        } else {
-            $payload = json_encode($payload);
-            $payload = (object) json_decode($payload);
-        }
+        $payload = $this->getContent($payload, $jsonSchema['type']);
 
         $validator = new Validator();
         $validator->validate($payload, $jsonSchema);
 
         if (!$validator->isValid()) {
-            return response()->json([
-                'message' => 'Not valid response',
-                'errors' => array_map(function ($error) {
-                    return [
-                        'property' => $error['property'],
-                        'message' => $error['message'],
-                        'constraint' => $error['constraint'],
-                    ];
-                }, $validator->getErrors()),
-            ], 400);
+            response()
+                ->json([
+                    'message' => $message,
+                    'errors' => array_map(function ($error) {
+                        return [
+                            'property' => $error['property'],
+                            'message' => $error['message'],
+                            'constraint' => $error['constraint'],
+                        ];
+                    }, $validator->getErrors()),
+                ], 400)
+                ->send();
         }
 
-        return true;
+        return $validator->isValid();
     }
 
     /**
