@@ -24,8 +24,8 @@ class OpenApiController extends Controller
 
             $config = config('openapi', [
                 'info' => [
-                    'version' => env('APP_VERSION'),
-                    'title' => env('APP_NAME'),
+                    'version' => env('APP_VERSION', '1.0.0'),
+                    'title' => env('APP_NAME', 'Lumen'),
                     'description' => 'OpenApi for app',
                 ],
                 'paths' => [],

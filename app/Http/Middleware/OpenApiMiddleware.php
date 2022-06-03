@@ -28,9 +28,9 @@ class OpenApiMiddleware
      * @return mixed
      * @throws \ReflectionException
      */
-    public function handle(Request $request, Closure $next)
+    public function handle(Request $request, Closure $next): mixed
     {
-        if (!in_array($request->getMethod(), ['POST', 'PUT'])) {
+        if (!in_array($request->getMethod(), ['POST', 'PUT', 'PATCH', 'DELETE'])) {
             return $next($request);
         }
 
@@ -107,7 +107,7 @@ class OpenApiMiddleware
     /**
      * @param string $content
      * @param string $type
-     * @return array|object|stdClass|string
+     * @return object|array|string
      */
     protected function getContent(string $content, string $type)
     {
@@ -194,7 +194,7 @@ class OpenApiMiddleware
             if (is_array($item)) {
                 $item = $this->getRef($item, $components);
             } elseif ($key == '$ref') {
-                if (substr($item, 0, 2) === '#/') {
+                if (str_starts_with($item, '#/')) {
                     $name = basename($item);
                     if (isset($components[$name])) {
                         $data = $components[$name];
