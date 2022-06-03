@@ -16,6 +16,7 @@ use OpenApi\Annotations\Operation;
 use OpenApi\Context;
 use OpenApi\Generator;
 use ReflectionMethod;
+use stdClass;
 
 class OpenApiMiddleware
 {
@@ -37,28 +38,39 @@ class OpenApiMiddleware
 
         if ($openapi) {
             $mediaType = $request->header('content-type');
-            /** @var \OpenApi\Annotations\RequestBody $jsonSchema */
-            $jsonSchema = $openapi->requestBody ?? null;
 
-            $schema = $this->getSchema($jsonSchema, $mediaType);
-            if (!$this->validate($request->getContent(), $schema, 'Not valid request')) {
-                return null;
+            if ($mediaType) {
+                /** @var \OpenApi\Annotations\RequestBody $jsonSchema */
+                $jsonSchema = $openapi->requestBody ?? null;
+
+                if ($jsonSchema && $jsonSchema != Generator::UNDEFINED) {
+                    $jsonSchema = $this->getSchema($jsonSchema, $mediaType);
+                    if (!$this->validate($request->getContent(), $jsonSchema, 'Not valid request')) {
+                        return null;
+                    }
+                }
             }
         }
+
 
         /** @var \Illuminate\Http\Response $response */
         $response = $next($request);
 
         if ($openapi) {
             $mediaType = $response->headers->get('content-type');
-            /** @var \OpenApi\Annotations\Response $jsonSchema */
-            $jsonSchema = array_values(array_filter($openapi->responses, function ($r) use ($response, $mediaType) {
-                    return $r->response == $response->getStatusCode() && isset($r->content[$mediaType]);
-                }))[0] ?? null;
 
-            $schema = $this->getSchema($jsonSchema, $mediaType);
-            if (!$this->validate($response->getContent(), $schema, 'Not valid response')) {
-                return null;
+            if ($mediaType) {
+                /** @var \OpenApi\Annotations\Response $jsonSchema */
+                $jsonSchema = array_values(array_filter($openapi->responses, function ($r) use ($response, $mediaType) {
+                        return $r->response == $response->getStatusCode() && isset($r->content[$mediaType]);
+                    }))[0] ?? null;
+
+                if ($jsonSchema && $jsonSchema != Generator::UNDEFINED) {
+                    $jsonSchema = $this->getSchema($jsonSchema, $mediaType);
+                    if (!$this->validate($response->getContent(), $jsonSchema, 'Not valid response')) {
+                        return null;
+                    }
+                }
             }
         }
 
@@ -95,7 +107,7 @@ class OpenApiMiddleware
     /**
      * @param string $content
      * @param string $type
-     * @return array|object|\stdClass|string
+     * @return array|object|stdClass|string
      */
     protected function getContent(string $content, string $type)
     {
@@ -110,7 +122,7 @@ class OpenApiMiddleware
 
             case 'object':
                 if ('' === $content) {
-                    $content = new \stdClass();
+                    $content = new stdClass();
                 } else {
                     $content = (object) json_decode($content);
                 }
