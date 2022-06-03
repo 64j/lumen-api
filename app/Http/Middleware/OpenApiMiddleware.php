@@ -11,8 +11,6 @@ use JsonSchema\Exception\InvalidSchemaException;
 use JsonSchema\Validator;
 use OpenApi\Analysers\DocBlockParser;
 use OpenApi\Analysis;
-use OpenApi\Annotations\AbstractAnnotation;
-use OpenApi\Annotations\Operation;
 use OpenApi\Context;
 use OpenApi\Generator;
 use ReflectionMethod;
@@ -30,21 +28,15 @@ class OpenApiMiddleware
      */
     public function handle(Request $request, Closure $next): mixed
     {
-        if (!in_array($request->getMethod(), ['POST', 'PUT', 'PATCH', 'DELETE'])) {
-            return $next($request);
-        }
-
         $openapi = $this->getOpenApi($request);
 
-        if ($openapi) {
+        if (isset($openapi['requestBody']['content'])) {
             $mediaType = $request->header('content-type');
 
             if ($mediaType) {
-                /** @var \OpenApi\Annotations\RequestBody $jsonSchema */
-                $jsonSchema = $openapi->requestBody ?? null;
+                $jsonSchema = $openapi['requestBody']['content'][$mediaType]['schema'] ?? null;
 
-                if ($jsonSchema && $jsonSchema != Generator::UNDEFINED) {
-                    $jsonSchema = $this->getSchema($jsonSchema, $mediaType);
+                if ($jsonSchema) {
                     if (!$this->validate($request->getContent(), $jsonSchema, 'Not valid request')) {
                         return null;
                     }
@@ -56,17 +48,13 @@ class OpenApiMiddleware
         /** @var \Illuminate\Http\Response $response */
         $response = $next($request);
 
-        if ($openapi) {
+        if (isset($openapi['responses'][$response->getStatusCode()]['content'])) {
             $mediaType = $response->headers->get('content-type');
 
             if ($mediaType) {
-                /** @var \OpenApi\Annotations\Response $jsonSchema */
-                $jsonSchema = array_values(array_filter($openapi->responses, function ($r) use ($response, $mediaType) {
-                        return $r->response == $response->getStatusCode() && isset($r->content[$mediaType]);
-                    }))[0] ?? null;
+                $jsonSchema = $openapi['responses'][$response->getStatusCode()]['content'][$mediaType]['schema'] ?? null;
 
-                if ($jsonSchema && $jsonSchema != Generator::UNDEFINED) {
-                    $jsonSchema = $this->getSchema($jsonSchema, $mediaType);
+                if ($jsonSchema) {
                     if (!$this->validate($response->getContent(), $jsonSchema, 'Not valid response')) {
                         return null;
                     }
@@ -79,10 +67,10 @@ class OpenApiMiddleware
 
     /**
      * @param \Illuminate\Http\Request $request
-     * @return \OpenApi\Annotations\Operation|null
+     * @return array
      * @throws \ReflectionException
      */
-    protected function getOpenApi(Request $request): ?Operation
+    protected function getOpenApi(Request $request): array
     {
         $route = $request->route()[1] ?? null;
 
@@ -98,10 +86,13 @@ class OpenApiMiddleware
             $analysis = new Analysis($annotations, new Context());
             $analysis->process($generator->getProcessors());
 
-            return $analysis->openapi->paths[0]->{strtolower($request->getMethod())} ?? null;
+            $schema = json_decode($analysis->openapi->toJson(), true)['paths'] ?? [];
+            $schema = $schema[$request->getPathInfo()][strtolower($request->getMethod())] ?? [];
+
+            return $this->getRef($schema);
         }
 
-        return null;
+        return [];
     }
 
     /**
@@ -109,7 +100,7 @@ class OpenApiMiddleware
      * @param string $type
      * @return object|array|string
      */
-    protected function getContent(string $content, string $type)
+    protected function getContent(string $content, string $type): object|array|string
     {
         switch ($type) {
             case 'array':
@@ -133,19 +124,6 @@ class OpenApiMiddleware
         }
 
         return $content;
-    }
-
-    /**
-     * @param \OpenApi\Annotations\AbstractAnnotation $schema
-     * @param string $type
-     * @return array
-     */
-    protected function getSchema(AbstractAnnotation $schema, string $type): array
-    {
-        $json = $schema->toJson();
-        $data = $json ? $this->getRef(json_decode($json, true)) : [];
-
-        return $data['content'][$type]['schema'] ?? [];
     }
 
     /**
@@ -186,9 +164,9 @@ class OpenApiMiddleware
     /**
      * @param array $data
      * @param array $components
-     * @return array|false|string
+     * @return array
      */
-    protected function getRef(array $data = [], array $components = [])
+    protected function getRef(array $data = [], array $components = []): array
     {
         foreach ($data as $key => &$item) {
             if (is_array($item)) {
@@ -201,7 +179,7 @@ class OpenApiMiddleware
                         break;
                     }
                 } else {
-                    $path = base_path('public') . $item;
+                    $path = base_path('public') . '/' . ltrim($item, '/');
                     if (file_exists($path)) {
                         $data = json_decode(file_get_contents($path), true);
                         break;
